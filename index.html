@@ -102,7 +102,7 @@
 <body>
 
     <header>
-        <h1>SORTE<span style="color:#fff">MAX</span></h1>
+        <h1 id="site-logo">SORTE<span style="color:#fff">MAX</span></h1>
         <div class="user-menu" onclick="document.querySelector('.search-bar').scrollIntoView({behavior: 'smooth'})">
             <i class="fas fa-user-circle"></i> Minhas Compras
         </div>
@@ -169,20 +169,33 @@
     <script>
         let filtroAtual = 'Todos';
 
+        // Proteção contra XSS - Sanitização de strings
+        function escapeHTML(str) {
+            if (!str) return "";
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         function limparReservasExpiradas() {
             const vendas = JSON.parse(localStorage.getItem("vendas")) || [];
             const rifas = JSON.parse(localStorage.getItem("rifas")) || [];
+            const cfg = JSON.parse(localStorage.getItem("sortemax_config")) || {};
             const AGORA = Date.now();
-            const LIMITE = 10 * 60 * 1000; // 10 minutos
+            const LIMITE = (parseInt(cfg.expireTime) || 15) * 60 * 1000;
 
             let alterado = false;
             const novasVendas = vendas.filter(v => {
-                if ((!v.status || v.status === 'Pendente') && (AGORA - v.id > LIMITE)) {
+                const dataVenda = v.createdAt ? new Date(v.createdAt).getTime() : v.id;
+                if (v.status === 'Pendente' && (AGORA - dataVenda > LIMITE)) {
                     alterado = true;
                     const rIdx = rifas.findIndex(r => r.title === v.rifa);
                     if (rIdx !== -1) {
                         rifas[rIdx].numerosVendidos = (rifas[rIdx].numerosVendidos || []).filter(n => !v.numeros.includes(n));
-                        rifas[rIdx].vendidos = rifas[rIdx].numerosVendidos.length;
+                        rifas[rIdx].vendidos = Math.max(0, (rifas[rIdx].vendidos || 0) - v.numeros.length);
                     }
                     return false;
                 }
@@ -197,9 +210,58 @@
 
         function carregarConfiguracoes() {
             const cfg = JSON.parse(localStorage.getItem("sortemax_config")) || {};
+            const header = document.querySelector('header');
+            const userMenu = document.querySelector('.user-menu');
+            const logoContainer = document.getElementById("site-logo");
+            
+            // Aplica Cor Primária
+            if (cfg.primaryColor) {
+                document.documentElement.style.setProperty('--primary', cfg.primaryColor);
+            }
+
+            // Lógica de Logo Centralizada
+            if (cfg.onlyLogo && cfg.logo) {
+                header.style.justifyContent = 'center';
+                if (userMenu) userMenu.style.display = 'none';
+                logoContainer.innerHTML = `<img src="${escapeHTML(cfg.logo)}" alt="Logo" style="max-height: 60px; display: block; margin: 0 auto;">`;
+            } else if (cfg.logo) {
+                header.style.justifyContent = 'space-between';
+                if (userMenu) userMenu.style.display = 'block';
+                logoContainer.innerHTML = `<img src="${escapeHTML(cfg.logo)}" alt="${escapeHTML(cfg.sitename)}" style="max-height: 40px; vertical-align: middle;">`;
+            } else if (cfg.sitename) {
+                header.style.justifyContent = 'space-between';
+                if (userMenu) userMenu.style.display = 'block';
+                logoContainer.innerText = cfg.sitename;
+            }
+            
+            if (cfg.sitename) {
+                document.title = `${cfg.sitename} - Escolha sua Rifa`;
+            }
+
+            // WhatsApp
             if (cfg.whatsapp) {
                 const waLink = `https://wa.me/${cfg.whatsapp.replace(/\D/g, '')}?text=Olá! Gostaria de informações sobre as rifas.`;
                 document.querySelector('.whatsapp-float').href = waLink;
+            }
+
+            // Facebook Pixel
+            if (cfg.pixelId && !window.fbq) {
+                !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+                n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+                t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+                document,'script','https://connect.facebook.net/en_US/fbevents.js');
+                fbq('init', cfg.pixelId); fbq('track', 'PageView');
+            }
+
+            // Google Analytics
+            if (cfg.analyticsId && !window.gtag) {
+                const script = document.createElement('script');
+                script.src = `https://www.googletagmanager.com/gtag/js?id=${cfg.analyticsId}`;
+                document.head.appendChild(script);
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date()); gtag('config', cfg.analyticsId);
             }
         }
 
@@ -216,13 +278,13 @@
             if(cpfBusca.length < 11) return res.innerHTML = "<p style='color: var(--primary)'>Digite o CPF completo.</p>";
             
             if(minhas.length === 0) {
-                res.innerHTML = "<p style='color: #ff4444'>Nenhuma cota encontrada para este CPF.</p>";
+                res.innerHTML = `<p style='color: #ff4444'>Nenhuma cota encontrada para este CPF.</p>`;
                 return;
             }
 
             res.innerHTML = "<h4>Suas Compras:</h4>" + minhas.map(v => `
                 <div style='background: #333; padding: 10px; margin-bottom: 5px; border-radius: 5px;'>
-                    <strong>${v.rifa}</strong>: ${v.numeros.join(', ')}
+                    <strong>${escapeHTML(v.rifa)}</strong>: ${v.numeros.join(', ')}
                 </div>
             `).join('');
         }
@@ -247,7 +309,7 @@
             emptyState.style.display = "none";
 
             container.innerHTML = rifasFiltradas.map(r => {
-                const total = r.total || 1000;
+                const total = r.totalTickets || 1000;
                 const vendidos = r.vendidos || 0;
                 const perc = Math.floor((vendidos / total) * 100);
                 const isHot = perc > 80 ? '<span class="badge-hot">🔥 QUASE ACABANDO</span>' : '';
@@ -255,11 +317,11 @@
                 return `
                     <a href="comprador.html?id=${r.id}" class="rifa-card" style="position: relative;">
                         ${isHot}
-                        <img src="${r.img || 'https://via.placeholder.com/400x200?text=SorteMax'}" class="rifa-img">
+                        <img src="${escapeHTML(r.img) || 'https://via.placeholder.com/400x200?text=SorteMax'}" class="rifa-img">
                         <div class="rifa-content">
-                            <span class="rifa-badge">${r.category}</span>
-                            <h3 class="rifa-title">${r.title}</h3>
-                            <div class="rifa-price">R$ ${parseFloat(r.price).toFixed(2)}</div>
+                            <span class="rifa-badge">${escapeHTML(r.category)}</span>
+                            <h3 class="rifa-title">${escapeHTML(r.title)}</h3>
+                            <div class="rifa-price">R$ ${parseFloat(r.pricePerTicket).toFixed(2)}</div>
                             
                             <div class="progress-container">
                                 <div class="progress-bar" style="width: ${perc}%"></div>
@@ -292,15 +354,15 @@
                 <div class="rifa-card" style="border-color: var(--primary); opacity: 0.9;">
                     <div style="background: var(--primary); color: #000; padding: 10px; text-align: center; font-weight: bold;">SORTEIO REALIZADO</div>
                     <div class="rifa-content">
-                        <h3 class="rifa-title">${s.rifaNome}</h3>
+                        <h3 class="rifa-title">${escapeHTML(s.rifaNome)}</h3>
                         <div style="background: #111; padding: 15px; border-radius: 10px; text-align: center; margin: 15px 0;">
                             <div style="font-size: 0.8rem; color: var(--text-muted);">Número Sorteado</div>
                             <div style="font-size: 2rem; color: var(--primary); font-weight: 800; letter-spacing: 5px;">${s.numero}</div>
                         </div>
-                        <div style="font-size: 0.9rem;"><strong>Ganhador:</strong> ${s.ganhador}</div>
+                        <div style="font-size: 0.9rem;"><strong>Ganhador:</strong> ${escapeHTML(s.ganhador)}</div>
                         <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">
-                            <i class="fas fa-calendar-alt"></i> ${s.data} <br>
-                            ${s.federalRef ? `<i class="fas fa-university"></i> Ref: ${s.federalRef}` : ''}
+                            <i class="fas fa-calendar-alt"></i> ${escapeHTML(s.data)} <br>
+                            ${s.federalRef ? `<i class="fas fa-university"></i> Ref: ${escapeHTML(s.federalRef)}` : ''}
                         </div>
                     </div>
                 </div>
@@ -329,9 +391,9 @@
             // Mostra os últimos 4 ganhadores
             container.innerHTML = sorteados.slice().reverse().slice(0, 4).map(s => `
                 <div class="winner-card">
-                    <img src="https://i.pravatar.cc/100?u=${s.numero}" alt="Ganhador">
-                    <div style="font-weight: bold; font-size: 0.9rem;">${s.ganhador.split(' ')[0]}</div>
-                    <div style="color: var(--primary); font-size: 0.75rem;">Ganhou: ${s.rifaNome}</div>
+                    <img src="https://i.pravatar.cc/100?u=${encodeURIComponent(s.numero)}" alt="Ganhador">
+                    <div style="font-weight: bold; font-size: 0.9rem;">${escapeHTML(s.ganhador.split(' ')[0])}</div>
+                    <div style="color: var(--primary); font-size: 0.75rem;">Ganhou: ${escapeHTML(s.rifaNome)}</div>
                     <div style="font-size: 0.6rem; color: #666;">Cota: ${s.numero}</div>
                 </div>
             `).join('');

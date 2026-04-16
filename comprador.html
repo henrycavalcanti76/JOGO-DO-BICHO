@@ -134,7 +134,7 @@
 
         @media (max-width: 768px) {
             .checkout-card { grid-template-columns: 1fr; }
-            .raffle-header { flex-direction: column; align-items: center; text-align: center; gap: 20px; }
+            .raffle-header { flex-direction: column; align-items: center; text-align: center; gap: 20px; padding: 15px; }
             .raffle-img { width: 180px; height: 180px; }
             .stepper { padding: 20px 10px; gap: 15px; }
             .step span { display: none; } /* Esconde texto das etapas no mobile */
@@ -305,7 +305,7 @@
                         <!-- Titular aparecerá aqui -->
                     </div>
                     <p style="font-size: 0.8rem; color: #888; margin-top: 15px;">
-                        <i class="fas fa-clock"></i> Sua reserva expira em 15 minutos.
+                        <i class="fas fa-clock"></i> Sua reserva expira em <span id="expire-text">15</span> minutos.
                     </p>
                     <button class="btn btn-primary" style="margin-top: 20px; background: var(--success); color: white;" onclick="confirmarCompra()">JÁ REALIZEI O PAGAMENTO</button>
                     <p style="text-align:center; font-size: 0.7rem; color: #555; margin-top: 10px;">A baixa do pagamento é automática via API Bancária.</p>
@@ -326,11 +326,22 @@
     let selecionados = new Set();
     let rifaAtual = null;
 
+    function escapeHTML(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     function limparReservasExpiradas() {
         const vendas = JSON.parse(localStorage.getItem("vendas")) || [];
         const rifas = JSON.parse(localStorage.getItem("rifas")) || [];
+        const cfg = JSON.parse(localStorage.getItem("sortemax_config")) || {};
         const AGORA = Date.now();
-        const LIMITE = 10 * 60 * 1000;
+        const LIMITE = (parseInt(cfg.expireTime) || 15) * 60 * 1000;
 
         let alterado = false;
         const novasVendas = vendas.filter(v => {
@@ -381,9 +392,9 @@
             return;
         }
 
-        document.getElementById("rifa-titulo").innerText = rifaAtual.title;
+        document.getElementById("rifa-titulo").textContent = rifaAtual.title;
         document.getElementById("rifa-preco").innerText = `R$ ${parseFloat(rifaAtual.price).toFixed(2).replace('.', ',')}`;
-        if(rifaAtual.img) document.querySelector(".raffle-img").src = rifaAtual.img;
+        if(rifaAtual.img) document.querySelector(".raffle-img").src = escapeHTML(rifaAtual.img);
         
         carregarConfiguracoes();
 
@@ -393,6 +404,7 @@
 
         renderizarCombos();
         renderizarTopBuyers();
+        showLoading("Carregando rifa...");
         gerarGrade();
         checkSession();
         iniciarTimer();
@@ -401,6 +413,7 @@
         registrarAtividade();
         setInterval(registrarAtividade, 15000);
 
+        hideLoading();
         fetchFederalResult();
     }
 
@@ -427,16 +440,16 @@
         if (user) {
             loggedOutDiv.style.display = "none";
             loggedInDiv.style.display = "block";
-            document.getElementById("welcome-user").innerText = `Olá, ${user.nome.split(' ')[0]}!`;
+            document.getElementById("welcome-user").textContent = `Olá, ${user.nome.split(' ')[0]}!`;
             document.getElementById("user-summary").innerHTML = `
                 <div style="color:var(--primary); font-weight:bold; margin-bottom:5px;">Dados da Conta:</div>
-                <strong>Nome:</strong> ${user.nome}<br>
-                <strong>CPF:</strong> ${user.cpf}<br>
-                <strong>WhatsApp:</strong> ${user.tel || 'Não informado'}
+                <strong>Nome:</strong> ${escapeHTML(user.nome)}<br>
+                <strong>CPF:</strong> ${escapeHTML(user.cpf)}<br>
+                <strong>WhatsApp:</strong> ${escapeHTML(user.tel || 'Não informado')}
             `;
             // Preenche os campos ocultos para o processo de checkout
-            document.getElementById("user-nome").value = user.nome;
-            document.getElementById("user-cpf").value = user.cpf;
+            document.getElementById("user-nome").value = user.nome || "";
+            document.getElementById("user-cpf").value = user.cpf || "";
             document.getElementById("user-email").value = user.email || "";
             document.getElementById("user-tel").value = user.tel || "";
         } else {
@@ -451,10 +464,11 @@
     }
 
     function iniciarTimer() {
+        const cfg = JSON.parse(localStorage.getItem("sortemax_config")) || {};
         const timerEl = document.getElementById("timer-global");
         const display = document.getElementById("timer-display");
         timerEl.style.display = "flex";
-        let time = 300; // 5 minutos
+        let time = (parseInt(cfg.expireTime) || 15) * 60; // Usa o tempo das configs ou 15min default
 
         const interval = setInterval(() => {
             let mins = Math.floor(time / 60);
@@ -470,12 +484,30 @@
 
     function carregarConfiguracoes() {
         const cfg = JSON.parse(localStorage.getItem("sortemax_config")) || {};
+        
+        // Aplica Cor Primária
+        if (cfg.primaryColor) {
+            document.documentElement.style.setProperty('--primary', cfg.primaryColor);
+        }
+
+        if (cfg.sitename) {
+            document.title = `${cfg.sitename} - Área do Cliente`;
+            
+            // Se quiser exibir a logo aqui também (opcional):
+            // if (cfg.logo) {
+            //    document.querySelector(".stepper").insertAdjacentHTML('beforebegin', `<div style="text-align:center; padding: 20px;"><img src="${cfg.logo}" style="max-height:50px;"></div>`);
+            // }
+        }
+        
         if (cfg.pix) {
             document.getElementById("pix-chave").innerText = cfg.pix;
             document.getElementById("pix-qr").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cfg.pix)}`;
         }
         if (cfg.titular) {
             document.getElementById("pix-titular-display").innerText = `Titular: ${cfg.titular}`;
+        }
+        if (cfg.expireTime) {
+            document.getElementById("expire-text").innerText = cfg.expireTime;
         }
     }
 
@@ -493,17 +525,17 @@
         container.innerHTML = defaultCombos.map(c => `
             <div class="combo-item" onclick="selecionarAleatorio(${c.qtd})">
                 <div style="font-size: 1.2rem; font-weight: bold;">${c.qtd} COTAS</div>
-                <div style="color: var(--primary)">R$ ${c.preco.toFixed(2)}</div>
-                <small>Economize ${Math.round(100 - (c.preco / (rifaAtual.price * c.qtd) * 100))}%</small>
+                <div style="color: var(--primary)">R$ ${parseFloat(c.preco).toFixed(2)}</div>
+                <small>Economize ${Math.round(100 - (parseFloat(c.preco) / (parseFloat(rifaAtual.price) * c.qtd) * 100))}%</small>
             </div>
         `).join('');
     }
 
     function renderizarTopBuyers() {
-        const vendas = JSON.parse(localStorage.getItem("vendas")) || [];
+        const vendas = (JSON.parse(localStorage.getItem("vendas")) || []).filter(v => v.status === 'Aprovado');
         const filtered = vendas.filter(v => v.rifa === rifaAtual.title).sort((a,b) => b.qtd - a.qtd).slice(0,3);
         document.getElementById("buyers-list").innerHTML = filtered.length ? 
-            filtered.map((v, i) => `<div><span class="badge-top-buyer">${i+1}º</span> ${v.comprador.split(' ')[0]} (${v.qtd})</div>`).join('') : "Seja o primeiro comprador!";
+            filtered.map((v, i) => `<div><span class="badge-top-buyer">${i+1}º</span> ${escapeHTML(v.comprador.split(' ')[0])} (${v.qtd})</div>`).join('') : "Seja o primeiro comprador!";
     }
 
     // 2. Gerar Grade de Números
@@ -512,7 +544,7 @@
         grid.innerHTML = "";
         const vendidos = rifaAtual.numerosVendidos || [];
         const totalCotas = rifaAtual.total || 100;
-        const padSize = String(totalCotas).length;
+        const padSize = (totalCotas - 1).toString().length;
 
         for(let i=0; i < totalCotas; i++) {
             const numStr = String(i).padStart(padSize, '0');
@@ -542,14 +574,14 @@
     }
 
     function selecionarAleatorio(qtd) {
-        // 1. Clear existing selections
-        selecionados.clear();
-        document.querySelectorAll(".num-item.selected").forEach(el => el.classList.remove("selected"));
-
         const vendidos = rifaAtual.numerosVendidos || [];
-        let selecionadosNovos = 0;
+        if (vendidos.length >= rifaAtual.total) return alert("Rifa esgotada!");
+
+        // 1. Manter o que já foi selecionado ou limpar? Vamos limpar para garantir o combo correto
+        selecionados.clear();
+        
         const totalCotas = rifaAtual.total || 100;
-        const padSize = String(totalCotas).length; // Consistent with gerarGrade
+        const padSize = (totalCotas - 1).toString().length; 
 
         // 2. Collect all available (not sold) numbers
         let availableNumbers = [];
@@ -576,12 +608,10 @@
         }
 
         // 4. Update the UI for selected numbers
-        document.querySelectorAll(".num-item:not(.sold)").forEach(it => {
-            if(selecionados.has(it.innerText)) {
-                it.classList.add("selected");
-            } else {
-                it.classList.remove("selected"); // Ensure previously selected numbers are unselected
-            }
+        const items = document.querySelectorAll(".num-item:not(.sold)");
+        items.forEach(it => {
+            const val = it.innerText.trim();
+            it.classList.toggle("selected", selecionados.has(val));
         });
         atualizarCarrinho();
     }
@@ -592,10 +622,10 @@
     }
 
     // Navegação entre etapas
-    function mudarEtapa(etapa) {
+    async function mudarEtapa(etapa) {
         if(etapa === 2 && selecionados.size === 0) return alert("Selecione ao menos um número!");
 
-        document.querySelectorAll(".view-section").forEach(s => s.classList.remove("active"));
+        await document.querySelectorAll(".view-section").forEach(s => s.classList.remove("active"));
         document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
 
         if(etapa === 1) {
@@ -622,16 +652,7 @@
 
         showLoading("Validando dados...");
 
-        // Exemplo de chamada para seu futuro servidor
-        /*
-        const response = await fetch('https://seu-api.com/gerar-pix', {
-            method: 'POST',
-            body: JSON.stringify({ nome, cpf, total: valorCalculado })
-        });
-        const data = await response.json();
-        */
-
-        setTimeout(() => {
+        setTimeout(async () => {
             if(!validarCPF(cpf)) {
                 hideLoading();
                 return alert("CPF inválido! Por favor, verifique os números digitados.");
@@ -661,9 +682,12 @@
         const emailComprador = document.getElementById("user-email").value;
         const telComprador = document.getElementById("user-tel").value;
 
-        if(!nomeComprador) return alert("Por favor, informe seu nome para reservar!");
+        if(!nomeComprador || !cpfComprador) return alert("Preencha todos os campos!");
 
         showLoading("Finalizando sua reserva...");
+
+        // Persiste o usuário para reconhecimento futuro
+        localStorage.setItem("usuario_logado", JSON.stringify({ nome: nomeComprador, cpf: cpfComprador, email: emailComprador, tel: telComprador }));
 
         setTimeout(() => {
             let rifas = JSON.parse(localStorage.getItem("rifas")) || [];
@@ -689,7 +713,7 @@
                     rifa: rifaAtual.title,
                     numeros: numeros,
                     qtd: numeros.length,
-                    valor: combo ? combo.preco : (numeros.length * rifas[idx].price),
+                    valor: combo ? parseFloat(combo.preco) : (numeros.length * parseFloat(rifas[idx].price)),
                     data: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
                     status: 'Pendente'
                 });

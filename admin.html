@@ -129,7 +129,12 @@
 <div class="main">
 
     <section id="dashboard" class="content-section active">
-        <h1>Dashboard Principal</h1>
+        <div class="flex-between">
+            <h1>Dashboard Principal</h1>
+            <button id="btn-automacao" class="btn" onclick="toggleAutomacao()" style="background: #333; color: #fff; border: 1px solid var(--primary);">
+                <i class="fas fa-robot"></i> Automação: DESLIGADA
+            </button>
+        </div>
         <div class="stats-grid">
             <div class="stat-card"><small><i class="fas fa-wallet"></i> Receita Total</small><h3 id="dash-total">R$ 0,00</h3><span class="trend-up"><i class="fas fa-arrow-up"></i> 12% este mês</span></div>
             <div class="stat-card"><small><i class="fas fa-ticket-alt"></i> Cotas Vendidas</small><h3 id="dash-cotas">0</h3></div>
@@ -280,20 +285,47 @@
     <section id="configuracoes" class="content-section">
         <h1>Configurações do Sistema</h1>
         <div style="display: grid; grid-template-columns: 1fr 300px; gap: 30px;">
-            <div class="table-container">
-                <h3>Gateway de Pagamento (PIX)</h3>
-                <br>
-                <label>WhatsApp de Suporte (com DDD)</label>
-                <input type="text" id="cfg-whatsapp" placeholder="5511999999999">
-                
-                <label>Chave PIX para Recebimento</label>
-                <input type="text" id="cfg-pix" placeholder="E-mail, CPF ou Aleatória">
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="table-container">
+                    <h3><i class="fas fa-id-card"></i> Identidade e Suporte</h3>
+                    <label>Nome do Site</label>
+                    <input type="text" id="cfg-sitename" placeholder="Ex: SorteMax">
+                    <label>URL da Logomarca (PNG recomendado)</label>
+                    <input type="text" id="cfg-logo" placeholder="https://link-da-imagem.png">
+                    <label>Cor Primária do Site</label>
+                    <input type="color" id="cfg-color" value="#ffc107" style="height: 50px; cursor: pointer;">
+                    <div style="margin: 10px 0; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+                        <input type="checkbox" id="cfg-only-logo" style="width: auto; margin-bottom: 0;">
+                        <label for="cfg-only-logo" style="margin-bottom: 0; cursor: pointer;">Exibir apenas a Logo (Centralizada)</label>
+                    </div>
+                    <label>WhatsApp de Suporte (com DDD)</label>
+                    <input type="text" id="cfg-whatsapp" placeholder="5511999999999">
+                </div>
 
-                <label>Nome do Titular da Conta</label>
-                <input type="text" id="cfg-titular" placeholder="Nome Completo">
+                <div class="table-container">
+                    <h3><i class="fas fa-university"></i> Gateway de Pagamento (PIX Manual)</h3>
+                    <label>Chave PIX para Recebimento</label>
+                    <input type="text" id="cfg-pix" placeholder="E-mail, CPF ou Aleatória">
+                    <label>Nome do Titular da Conta</label>
+                    <input type="text" id="cfg-titular" placeholder="Nome Completo">
+                </div>
 
-                <button class="btn btn-primary" onclick="salvarConfiguracoes()" style="margin-top:20px;">
-                    <i class="fas fa-check"></i> Salvar Configurações
+                <div class="table-container">
+                    <h3><i class="fas fa-clock"></i> Regras de Reserva</h3>
+                    <label>Tempo de Reserva (minutos)</label>
+                    <input type="number" id="cfg-expire" placeholder="Ex: 15">
+                </div>
+
+                <div class="table-container">
+                    <h3><i class="fas fa-code"></i> Marketing e Tracking</h3>
+                    <label>ID do Pixel (Facebook)</label>
+                    <input type="text" id="cfg-pixel" placeholder="Ex: 1234567890">
+                    <label>ID Google Analytics (G-XXXXX)</label>
+                    <input type="text" id="cfg-analytics" placeholder="G-XXXXXXXX">
+                </div>
+
+                <button class="btn btn-primary" onclick="salvarConfiguracoes()" style="width: fit-content; padding: 15px 40px;">
+                    <i class="fas fa-save"></i> SALVAR TODAS AS CONFIGURAÇÕES
                 </button>
             </div>
 
@@ -407,9 +439,22 @@
 </div>
 
 <script>
+let automacaoAtiva = false;
 let onlineChart = null;
+let approvedSalesCount = -1;
+const audioNotif = new Audio('https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3');
 let rifas = JSON.parse(localStorage.getItem("rifas")) || [];
 let vendas = JSON.parse(localStorage.getItem("vendas")) || [];
+
+function escapeHTML(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
 
 function limparReservasExpiradas() {
     const vendasLocal = JSON.parse(localStorage.getItem("vendas")) || [];
@@ -470,11 +515,22 @@ function handleLogout() {
 // CONFIGURAÇÕES
 function salvarConfiguracoes() {
     const config = {
+        sitename: document.getElementById("cfg-sitename").value,
+        logo: document.getElementById("cfg-logo").value,
+        primaryColor: document.getElementById("cfg-color").value,
         whatsapp: document.getElementById("cfg-whatsapp").value,
         pix: document.getElementById("cfg-pix").value,
-        titular: document.getElementById("cfg-titular").value
+        titular: document.getElementById("cfg-titular").value,
+        expireTime: document.getElementById("cfg-expire").value,
+        pixelId: document.getElementById("cfg-pixel").value,
+        analyticsId: document.getElementById("cfg-analytics").value,
+        onlyLogo: document.getElementById("cfg-only-logo").checked
     };
     localStorage.setItem("sortemax_config", JSON.stringify(config));
+    
+    // Aplica a cor instantaneamente no admin
+    if(config.primaryColor) document.documentElement.style.setProperty('--primary', config.primaryColor);
+    
     alert("Configurações salvas com sucesso!");
 }
 
@@ -505,9 +561,16 @@ function showSection(sectionId, element) {
     if(sectionId === 'usuarios') renderizarUsuarios();
     if(sectionId === 'configuracoes') {
         const cfg = JSON.parse(localStorage.getItem("sortemax_config")) || {};
+        document.getElementById("cfg-sitename").value = cfg.sitename || "SORTE MAX";
+        document.getElementById("cfg-logo").value = cfg.logo || "";
+        document.getElementById("cfg-color").value = cfg.primaryColor || "#ffc107";
         document.getElementById("cfg-whatsapp").value = cfg.whatsapp || "";
         document.getElementById("cfg-pix").value = cfg.pix || "";
         document.getElementById("cfg-titular").value = cfg.titular || "";
+        document.getElementById("cfg-expire").value = cfg.expireTime || "15";
+        document.getElementById("cfg-pixel").value = cfg.pixelId || "";
+        document.getElementById("cfg-analytics").value = cfg.analyticsId || "";
+        document.getElementById("cfg-only-logo").checked = cfg.onlyLogo || false;
     }
 }
 
@@ -520,9 +583,9 @@ function abrirModal(id = null) {
         document.getElementById("modalTitle").innerText = "Editar Rifa";
         document.getElementById("editId").value = r.id;
         document.getElementById("title").value = r.title;
-        document.getElementById("price").value = r.price;
+        document.getElementById("price").value = r.pricePerTicket;
         document.getElementById("category").value = r.category || "Veículos";
-        document.getElementById("totalCotas").value = r.total;
+        document.getElementById("totalCotas").value = r.totalTickets;
         document.getElementById("img").value = r.img;
         document.getElementById("cotasPremiadas").value = (r.cotasPremiadas || []).join(', ');
         document.getElementById("combos").value = (r.combos || []).map(c => `${c.qtd}:${c.preco}`).join(', ');
@@ -548,8 +611,8 @@ function salvarRifa() {
     const dados = {
         title: document.getElementById("title").value,
         category: document.getElementById("category").value,
-        price: parseFloat(document.getElementById("price").value),
-        total: parseInt(document.getElementById("totalCotas").value),
+        pricePerTicket: parseFloat(document.getElementById("price").value),
+        totalTickets: parseInt(document.getElementById("totalCotas").value),
         img: document.getElementById("img").value,
         cotasPremiadas: document.getElementById("cotasPremiadas").value.split(',').map(n => n.trim()),
         combos: document.getElementById("combos").value.split(',').filter(x => x).map(c => { const [q,p] = c.split(':'); return {qtd: parseInt(q), preco: parseFloat(p)}; })
@@ -841,6 +904,28 @@ async function realizarSorteio(rifaId) {
     renderizarSorteios();
 }
 
+function finalizarSorteioAutomatico(r, numeroVencedor, ref) {
+    const todasVendas = JSON.parse(localStorage.getItem("vendas")) || [];
+    const vendaVencedora = todasVendas.find(v => 
+        v.rifa === r.title && 
+        v.numeros.map(String).includes(String(numeroVencedor))
+    );
+    const nomeGanhador = vendaVencedora ? vendaVencedora.comprador : "Nenhum comprador";
+
+    let sorteados = JSON.parse(localStorage.getItem("sorteios_realizados")) || [];
+    sorteados.push({
+        rifaId: r.id,
+        rifaNome: r.title,
+        numero: numeroVencedor,
+        ganhador: nomeGanhador,
+        federalRef: ref,
+        data: new Date().toLocaleString()
+    });
+    localStorage.setItem("sorteios_realizados", JSON.stringify(sorteados));
+    carregarDados();
+    renderizarSorteios();
+}
+
 function excluirRifa(id) {
     if(confirm("Deseja realmente excluir?")) {
         rifas = rifas.filter(r => r.id !== id);
@@ -1020,6 +1105,82 @@ function excluirVenda(vendaId) {
     }
 }
 
+function toggleAutomacao() {
+    automacaoAtiva = !automacaoAtiva;
+    const btn = document.getElementById("btn-automacao");
+    if(automacaoAtiva) {
+        btn.innerHTML = '<i class="fas fa-robot"></i> Automação: LIGADA';
+        btn.style.background = "rgba(0, 200, 81, 0.2)";
+        btn.style.color = "var(--success)";
+        processarAutomacao();
+    } else {
+        btn.innerHTML = '<i class="fas fa-robot"></i> Automação: DESLIGADA';
+        btn.style.background = "#333";
+        btn.style.color = "#fff";
+    }
+}
+
+async function processarAutomacao() {
+    if(!automacaoAtiva) return;
+
+    let houveMudanca = false;
+    const vendasLocal = JSON.parse(localStorage.getItem("vendas")) || [];
+    const rifasLocal = JSON.parse(localStorage.getItem("rifas")) || [];
+    const sorteados = JSON.parse(localStorage.getItem("sorteios_realizados")) || [];
+    const AGORA = Date.now();
+
+    // 1. Aprovação Automática de Vendas (Simula processamento PIX)
+    vendasLocal.forEach(v => {
+        // Aprova apenas vendas feitas há mais de 10 segundos para parecer real
+        if(v.status === 'Pendente' && (AGORA - v.id > 10000)) {
+            v.status = 'Aprovado';
+            houveMudanca = true;
+            
+            // Atualiza o ranking do usuário
+            atualizarDadosUsuarioAprovado(v);
+        }
+    });
+
+    if(houveMudanca) {
+        localStorage.setItem("vendas", JSON.stringify(vendasLocal));
+        carregarDados();
+    }
+
+    // 2. Sorteio Automático de Rifas 100%
+    for (const r of rifasLocal) {
+        const perc = (r.vendidos / r.total);
+        const jaSorteado = sorteados.find(s => s.rifaId === r.id);
+        
+        if(perc >= 1.0 && !jaSorteado) {
+            try {
+                const res = await fetch('https://loteriascaixa-api.herokuapp.com/api/federal/latest');
+                const data = await res.json();
+                if(data && data.dezenas) {
+                    // Automatiza usando o 1º prêmio da Federal
+                    const fullNum = data.dezenas[0];
+                    const len = String(r.total - 1).length;
+                    const numeroVencedor = fullNum.slice(-len).padStart(len, '0');
+                    finalizarSorteioAutomatico(r, numeroVencedor, `1º Prêmio Federal (Automático: ${fullNum})`);
+                }
+            } catch (e) { console.error("Falha no sorteio automático", e); }
+        }
+    }
+
+    // Roda a verificação a cada 5 segundos
+    setTimeout(processarAutomacao, 5000);
+}
+
+function atualizarDadosUsuarioAprovado(venda) {
+    let usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+    const uIdx = usuarios.findIndex(u => u.cpf === venda.cpf);
+    if(uIdx !== -1) {
+        // Evita duplicar contagem se já processado
+        usuarios[uIdx].totalGasto = (usuarios[uIdx].totalGasto || 0) + parseFloat(venda.valor);
+        usuarios[uIdx].totalCompras = (usuarios[uIdx].totalCompras || 0) + 1;
+        localStorage.setItem("usuarios", JSON.stringify(usuarios));
+    }
+}
+
 function salvarSnapshotOnline(ativos) {
     let historico = JSON.parse(localStorage.getItem("online_history")) || [];
     const agora = Date.now();
@@ -1130,13 +1291,19 @@ function carregarDados() {
     // Só conta financeiro de vendas aprovadas
     const vendasAprovadas = vendas.filter(v => v.status === 'Aprovado');
 
+    // Notificação Sonora: Toca se o número de vendas aprovadas aumentou
+    if (approvedSalesCount !== -1 && vendasAprovadas.length > approvedSalesCount) {
+        audioNotif.play().catch(e => console.log("Áudio aguardando interação do usuário."));
+    }
+    approvedSalesCount = vendasAprovadas.length;
+
     rifas.forEach(r => {
         const perc = Math.floor((r.vendidos / r.total) * 100);
         const htmlRow = `
             <tr>
                 <td>#${r.id.toString().slice(-4)}</td>
-                <td><strong>${r.title}</strong></td>
-                <td>R$ ${r.price.toFixed(2)}</td>
+                <td><strong>${escapeHTML(r.title)}</strong></td>
+                <td>R$ ${parseFloat(r.price).toFixed(2)}</td>
                 <td>${r.vendidos} / ${r.total}</td>
                 <td><span class="badge bg-success">ATIVO</span></td>
                 <td>

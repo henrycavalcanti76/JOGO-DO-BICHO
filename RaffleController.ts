@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { PurchaseTicketsUseCase } from "../../../application/use-cases/PurchaseTicketsUseCase";
+import { PurchaseTicketsUseCase } from "./PurchaseTicketsUseCase";
 
 export class RaffleController {
   constructor(private purchaseUseCase: PurchaseTicketsUseCase) {}
@@ -11,10 +11,12 @@ export class RaffleController {
       selectedNumbers: z.array(z.string()).min(1)
     });
 
-    const { raffleId, selectedNumbers } = purchaseSchema.parse(request.body);
-    const buyerId = request.user.sub; // Extraído do JWT pelo Middleware
-
     try {
+      const { raffleId, selectedNumbers } = purchaseSchema.parse(request.body);
+      const buyerId = (request as any).user?.sub; 
+      
+      if (!buyerId) throw new Error("Usuário não autenticado");
+
       const result = await this.purchaseUseCase.execute({ raffleId, buyerId, selectedNumbers });
       return reply.status(201).send({ success: true, data: result });
     } catch (err: any) {
